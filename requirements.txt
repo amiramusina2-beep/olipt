@@ -1,0 +1,6 @@
+pyTelegramBotAPI
+gspread
+google-auth
+google-genai
+requests
+flask
