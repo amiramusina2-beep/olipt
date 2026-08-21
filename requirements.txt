@@ -4,4 +4,4 @@ google-auth
 google-genai
 requests
 flask
-duckduckgo_search
+ddgs

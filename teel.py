@@ -11,6 +11,7 @@ import telebot
 from telebot import types
 from flask import Flask
 from threading import Thread
+from ddgs import DDGS
 
 app = Flask(__name__)
 
@@ -240,7 +241,7 @@ def handle_all_messages(message):
     if db.get(str_chat_id, {}).get("in_ai_chat", False):
         try:
             from google import genai
-            from duckduckgo_search import DDGS
+            from ddgs import DDGS
 
             local_client = genai.Client(api_key=GEMINI_API_KEY)
             user_data = db[str_chat_id]
@@ -248,6 +249,7 @@ def handle_all_messages(message):
                 user_data["chat_history"] = []
 
             # Делаем быстрый поиск через DuckDuckGo по тексту пользователя
+            # Делаем быстрый поиск через DDGS
             search_results_text = ""
             try:
                 with DDGS() as ddgs:
