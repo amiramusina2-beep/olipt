@@ -236,26 +236,42 @@ def handle_all_messages(message):
         db[str_chat_id]["chat_history"] = []  # Очищаем память при выходе
         return bot.send_message(chat_id, "✅ Вышли из режима ИИ, память стерта.")
 
-# 🧠 ОБРАБОТКА СООБЩЕНИЙ В РЕЖИМЕ ИИ
+# 🧠 ОБРАБОТКА СООБЩЕНИЙ В РЕЖИМЕ ИИ С DUCKDUCKGO ПОИСКОМ
     if db.get(str_chat_id, {}).get("in_ai_chat", False):
         try:
-            # Указываем Python брать глобальный клиент для ИИ
-            global ai_client
-            
+            from google import genai
+            from duckduckgo_search import DDGS
+
+            local_client = genai.Client(api_key=GEMINI_API_KEY)
             user_data = db[str_chat_id]
             if "chat_history" not in user_data:
                 user_data["chat_history"] = []
 
-            # Передаем историю из словарей в чат Gemini с актуальной моделью
-            chat = client.chats.create(
+            # Делаем быстрый поиск через DuckDuckGo по тексту пользователя
+            search_results_text = ""
+            try:
+                with DDGS() as ddgs:
+                    results = [r for r in ddgs.text(text, max_results=3)]
+                    if results:
+                        search_results_text = "\n".join([f"- {r['title']}: {r['body']} ({r['href']})" for r in results])
+            except Exception as search_err:
+                print(f"⚠️ Ошибка поиска DDG: {search_err}")
+
+            # Формируем финальный промпт для модели
+            final_prompt = text
+            if search_results_text:
+                final_prompt = f"Информация из интернета (DuckDuckGo):\n{search_results_text}\n\nВопрос пользователя: {text}"
+
+            # Создаем чат на самой быстрой 3.5 Flash-Lite
+            chat = local_client.chats.create(
                 model="gemini-3.5-flash-lite",
                 history=user_data["chat_history"]
             )
             
-            response = chat.send_message(text)
+            response = chat.send_message(final_prompt)
             ai_reply = response.text
             
-            # Вручную добавляем сообщения в историю в формате словарей
+            # Сохраняем в историю оригинальный текст пользователя и ответ ИИ
             user_data["chat_history"].append({"role": "user", "parts": [{"text": text}]})
             user_data["chat_history"].append({"role": "model", "parts": [{"text": ai_reply}]})
             
@@ -270,7 +286,6 @@ def handle_all_messages(message):
             ai_reply = f"⚠️ Ошибка ИИ: {str(e)}"
             return bot.send_message(chat_id, ai_reply)
 
-    # ЛЮБОЙ ПЕРЕХВАТ КОМАНДЫ /freepro ИЛИ /pro
 # 4. ПЕРЕХВАТ КОМАНДЫ /freepro ИЛИ /pro С ПАРОЛЕМ
     if text.startswith("/freepro") or text.startswith("/pro"):
         parts = text.split(maxsplit=1)
