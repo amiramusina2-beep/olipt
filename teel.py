@@ -35,7 +35,8 @@ sheets_client = gspread.authorize(creds)  # Назвали отдельно дл
 sheet = sheets_client.open("BotDB").sheet1
 
 # Инициализируем клиент Google GenAI отдельным именем
-ai_client = genai.Client(api_key=GEMINI_API_KEY)  # Назвали отдельно для ИИ
+# Стало:
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 bot = telebot.TeleBot(TOKEN, threaded=True)
 DB_FILE = "database.json"
@@ -235,14 +236,17 @@ def handle_all_messages(message):
         db[str_chat_id]["chat_history"] = []  # Очищаем память при выходе
         return bot.send_message(chat_id, "✅ Вышли из режима ИИ, память стерта.")
 
-# 🧠 ОБРАБОТКА СООБЩЕНИЙ В РЕЖИМЕ ИИ С ПАМЯТЬЮ И СОХРАНЕНИЕМ
+# 🧠 ОБРАБОТКА СООБЩЕНИЙ В РЕЖИМЕ ИИ
     if db.get(str_chat_id, {}).get("in_ai_chat", False):
         try:
+            # Указываем Python брать глобальный клиент для ИИ
+            global ai_client
+            
             user_data = db[str_chat_id]
             if "chat_history" not in user_data:
                 user_data["chat_history"] = []
 
-            # Передаем историю из словарей в чат Gemini
+            # Передаем историю из словарей в чат Gemini с актуальной моделью
             chat = client.chats.create(
                 model="gemini-3.5-flash-lite",
                 history=user_data["chat_history"]
@@ -251,14 +255,12 @@ def handle_all_messages(message):
             response = chat.send_message(text)
             ai_reply = response.text
             
-            # Вручную добавляем сообщения в историю в формате словарей (они легко сохраняются в JSON!)
+            # Вручную добавляем сообщения в историю в формате словарей
             user_data["chat_history"].append({"role": "user", "parts": [{"text": text}]})
             user_data["chat_history"].append({"role": "model", "parts": [{"text": ai_reply}]})
             
-            # Теперь сохранение в базу пройдет без ошибок
             save_db(db)
 
-            # Отправка в телеграм с защитой от ошибок разметки
             try:
                 return bot.send_message(chat_id, ai_reply, parse_mode="Markdown")
             except Exception:
@@ -953,5 +955,10 @@ if __name__ == "__main__":
     # Запуск веб-сервера для удержания бота в активном состоянии на Render
     Thread(target=run_web).start()
     
-    # Основной цикл бота (используем только один надежный вызов)
-    bot.infinity_polling(none_stop=True, interval=0, timeout=20)
+    # Запускаем бота с защитой от конфликтов
+    while True:
+        try:
+            bot.infinity_polling(none_stop=True, interval=1, timeout=20)
+        except Exception as e:
+            print(f"⚠️ Ошибка поллинга: {e}")
+            time.sleep(5)
